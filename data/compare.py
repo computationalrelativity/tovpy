@@ -9,7 +9,8 @@ from numpy import log10 as lg
 from scipy.interpolate import interp1d as sp_interp1d
 from numpy import pi
 from scipy.integrate import ode
-from tovpy.units import Units
+from tovpy import Units
+import os
 uts = Units()
 
 G_cgs=const.G.cgs.value
@@ -57,20 +58,9 @@ except FileNotFoundError:
         data_eos=np.loadtxt('eos/'+eos_name+'.rns', skiprows=1)
     except FileNotFoundError:
         raise FileNotFoundError("File not found in 'data'")
-try:
-    data_MATLAB = np.loadtxt('MATLAB_solver/tov/Sequences/Stable/'+eos_name+'_sequence.txt', skiprows=1)
-except FileNotFoundError:
-    try:
-        data_MATLAB = np.loadtxt('MATLAB_solver/tov/Sequences/Complete/'+eos_name+'_sequence.txt', skiprows=1)
-    except FileNotFoundError:
-        raise FileNotFoundError("File not found in either 'Complete' or 'Stable' directories. "
-                                "Only available in tovpy, cannot compare.")
+
 M_tovpy = data_tovpy[:,1]
 R_tovpy = data_tovpy[:,2]
-M_MATLAB = data_MATLAB[:,1]
-R_MATLAB = data_MATLAB[:,3] * const.G * const.M_sun / const.c**2 /1e3
-
-
 
 N = 200   
 
@@ -121,7 +111,6 @@ def e2p(e):
         return 10.0**lge2lgp(lg(e))
             
 a, b = 14,  lg(max_e)
-print( a, b)
 rhoc=10**(np.linspace(a,b,N))
     
 r0=1
@@ -142,7 +131,6 @@ for i in range (len(rhoc)):
     M[i]=results[0]
     R[i]=solver.t
 plt.plot(R[:-1]/10**5,M[:-1]/Ms_cgs, label=str(eos_name)+' traditional',linewidth=2, linestyle='solid')
-plt.plot(R_MATLAB, M_MATLAB, label=str(eos_name)+' MATLAB', linestyle='dashed')
 plt.plot(R_tovpy, M_tovpy, label=str(eos_name)+' tovpy',linestyle='dotted', linewidth=3)
 plt.axhline(y = 2.01, color = 'k', ls = '--', label= 'J0348+0432')
 plt.fill_between([0,100],y1 = 2.01-0.04, y2 = 2.01+0.04, color = 'grey', alpha = 0.5)
@@ -153,5 +141,7 @@ plt.ylabel(r'Mass (M$_\odot$)')
 plt.xlim(0, 20)
 plt.ylim(0, 3)
 plt.legend()
+module_dir = os.path.dirname(__file__)
+save_dir = os.path.join(module_dir, 'figures')
+plt.savefig(os.path.join(save_dir, 'compare_'+eos_name+'.pdf'), bbox_inches='tight')
 plt.show()
-# print(M,R)

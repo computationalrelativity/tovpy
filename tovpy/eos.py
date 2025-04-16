@@ -24,8 +24,9 @@ from scipy.interpolate import CubicSpline
 from scipy import integrate
 import pandas as pd
 from io import StringIO
+import pkg_resources
 
-import units as units
+from . import units as units
 
 
 # Data for piecewise polytropes with 4 pieces
@@ -711,10 +712,15 @@ class EOSTabular(object):
             if params['filename'] not in FILENAME_LIST:
                 raise ValueError("File "+params['filename']+" not found")
             else:
-                module_dir = os.path.dirname(__file__)
-                data_path = os.path.join(module_dir, 'eos', params['filename'])
-                self.table = np.loadtxt(data_path, skiprows = 1)
-            
+                filename = params.get('filename')
+                # Determine the directory of this file (eos.py)
+                module_dir = os.path.abspath(__file__)
+                # print('module_dir',module_dir)
+                base_dir = os.path.dirname(os.path.dirname(module_dir))
+                # print('base_dir',base_dir)
+                # Construct the path to the eos data file
+                data_path = os.path.join(base_dir, "eos", filename)
+                self.table = np.loadtxt(data_path, skiprows=1)        
         elif name == 'from_ndarray':
 
             if "data" not in params:

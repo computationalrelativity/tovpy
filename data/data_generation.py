@@ -1,6 +1,7 @@
-from eos import *
-from tovpy.units import Units
+from tovpy import EOS
+from tovpy import Units
 uts = Units()
+from tovpy import Utils
 from scipy.constants import c, G
 import numpy as np
 import os
@@ -52,35 +53,13 @@ EOS_FILE_NAME = [
     'eos_SFHx_adb.rns'
 ]
 # Note that LS1800B0.rns, eosAPR, eosFP, eosFPS, eosSLy, eosWNV are not included in the list above
-from tov import TOV
+from tovpy import TOV
 pc = np.logspace(-12, -8, 200)
 for eos_file in EOS_FILE_NAME:
     print(eos_file)
-    M = np.zeros(len(pc))
-    R = np.zeros(len(pc))
-    C = np.zeros(len(pc))
-    k2 = np.zeros(len(pc))
-    j3 = np.zeros(len(pc))
     eos = EOS('tabular',name="from_file",filename=eos_file)
-    this_tov = TOV(eos = eos,  leven = [2], 
-                                         lodd = [3], 
-                                         #ode_method='RK45',
-                                         ode_atol=1e-10, 
-                                         ode_rtol=1e-10, 
-                                         dhfact=-1e-12
-                                     )
-    for i, pci in enumerate(pc):
-        M[i],R[i],C[i],k,j = this_tov.solve(pci)
-        print(pci)
-        R[i] *= 1./1e3
-        M[i] *= 1./uts.constant['MRSUN_SI'][0]
-        k2[i] = k[2]
-        j3[i] = j[3]
-    data = np.column_stack((pc, M, R, C, k2, j3))
     module_dir = os.path.dirname(__file__)
-    # save_path = os.path.join(module_dir, 'data', eos_file)
-    save_path = os.path.join(module_dir, eos_file)
-    np.savetxt(save_path + '.txt', data, delimiter='\t', 
-           header='pc\tM\tR\tC\tk2\tj3', comments='')
-    break
+    utils = Utils(eos=eos, path=module_dir, p = pc)
+    leven, lodd = [2,3], [2,3]
+    utils.Love_txt(leven=leven, lodd=lodd, filename=eos_file+'.txt')
  

@@ -187,9 +187,9 @@ class Units(object):
         return self.conversion_factor[k]['si'] / self.conversion_factor[k]['cgs']
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
     
-    uts = Units()
-    uts.show()
+#     uts = Units()
+#     uts.show()
 
