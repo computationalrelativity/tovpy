@@ -16,17 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
+from warnings import warn
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy.optimize import minimize, bisect, OptimizeResult
 
-from . import eos
-from . import units
-from . import tov
-from .eos import EOS
+from .eos import EOS, EOSTabular
 from .units import Units
 from .tov import TOV
 
 uts = Units()
+msol = uts.constant['MRSUN_SI'][0]
 
 class Utils:
     
@@ -336,3 +337,104 @@ class Utils:
           ' '.join(f'h{l}' for l in leven) + ' ' +
           ' '.join(f'j{l}' for l in lodd))
         np.savetxt(filename, np.column_stack((self.p, m_list, r_list, c_list, *k_vars.values(), *h_vars.values(), *j_vars.values())), header=header, delimiter='\t')
+
+
+class Target:
+
+    """
+
+    Utility class for finding target masses or maximum mass configuration
+
+    """
+
+    def __init__(
+        self,
+        eos: EOS,
+        # path: None | str = None,
+        leven: list[int] = [],
+        lodd: list[int] = [],
+        **kwargs):
+        """
+        Parameters
+        ----------
+         eos : EOS
+             EOS object to use
+         leven : list, optional
+             multipole indexes of even perturbations
+         lodd : list, optional
+             multipole indexes of odd perturbations
+        """
+
+        if not eos:
+            raise ValueError("Must provide a EOS")
+        self.eos = eos
+
+        self.tov = TOV(eos=self.eos, leven=leven, lodd=lodd, **kwargs)
+        self.M_max = None
+        self.pc_max = None
+
+    def specific_mass(self, mass: float, a: None|float=None, b:None|float=None, **kwargs) -> float:
+        """
+        Finds the central pressure for a target mass.
+
+        Parameters
+        ----------
+         mass : float
+             Mass to target in solar masses
+         a : float, optional
+             lower root finding bracket
+             if not provided use table minimum for tabulated EOSs or 1e-13 otherwise
+         b : float, optional
+             upper root finding bracket
+             if not provided, use central pressure of maximum mass
+             (calls maximum_mass if it has not been called before)
+         **kwargs
+             Keyword arguments passed to scipy.optimize.bisect
+        """
+        M_targ = mass*msol
+        def _solve(pc):
+            M, *_ = self.tov.solve(np.exp(pc))
+            return M - M_targ
+
+        if a is None:
+            if isinstance(self.eos, EOSTabular):
+                a = self.eos.min_pTab
+            else:
+                a = 1e-13
+        if b is None:
+            if self.pc_max is None:
+                self.maximum_mass()
+            b = self.pc_max
+
+        return np.exp(bisect(_solve, np.log(a), np.log(b), **kwargs))
+
+    def maximum_mass(self, p0: float=5e-10, **kwargs) -> OptimizeResult:
+        """
+        Finds the central pressure for the maximum mass tov.
+        If a tabulated EOS is used, the minimization is bound to the EOS pressure range
+        and might return the maximum pressure in the table if it does not contain the
+        maximum mass configuration.
+
+        Parameters
+        ----------
+         p0 : float, optional, default=5e-10
+             Initial guess for the central pressure
+         **kwargs
+             Keyword arguments passed to scipy.optimize.minimize
+        """
+        def _solve(pc):
+            M, *_ = self.tov.solve(np.exp(pc[0]))
+            return -M
+
+        if isinstance(self.eos, EOSTabular):
+            kwargs.setdefault("bounds", [(np.log(self.eos.min_pTab), np.log(self.eos.max_pTab))])
+            kwargs.setdefault("method", "Nelder-Mead") # derivative-free method bounded method
+
+        res = minimize(_solve, [np.log(p0),], **kwargs)
+        self.M_max = -res.fun
+        self.pc_max = np.exp(res.x[0])
+
+        if isinstance(self.eos, EOSTabular) and np.isclose(self.pc_max, self.eos.max_pTab):
+            warn("Maximum mass configuration appears to be outside of EOS table", RuntimeWarning)
+
+        return res
