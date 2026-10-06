@@ -340,11 +340,11 @@ class TOV(object):
 
     def Compute_proper_radius(self, sol):
         """
-        Compute baryon mass
+        Compute proper radius
         """
         r = sol.y[self.var['r'],:]
         m = sol.y[self.var['m'],:]
-        return np.trapz( r, 1./np.sqrt((1-2*m/r)), r )
+        return self.__integrate_r(r, 1./np.sqrt(1-2*m/r))
 
     def __integrate_r(self, r, f):
         """
