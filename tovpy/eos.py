@@ -174,6 +174,9 @@ class EOSPolytropic(object):
         H1 = 2. * np.sinh(0.5*h) * np.exp(0.5*h) # = exp(h) - 1
         rho = ( G_1/(G*K) * H1 )**(1.0/G_1)
         return rho
+
+    def RestMassDensity_Of_PseudoEnthalpy(self,h):
+        return self.BaryonRestMassDensity_Of_PseudoEnthalpy(h)
     
     def Pressure_Of_PseudoEnthalpy(self,h):
         rho = self.BaryonRestMassDensity_Of_PseudoEnthalpy(h)
@@ -683,6 +686,10 @@ class EOSTabular(object):
     C4 baryon number density (cm^{-3})
 
     Note that: eosNV has FIVE columns...
+
+    The rest-mass density is C4 times `baryon_mass` (g), which defaults to
+    the atomic mass unit. It is only available for tables that have C4.
+
     EOS tables can be found e.g.
 
     http://xtreme.as.arizona.edu/NeutronStars/index.php/dense-matter-eos/ # CANNOT OPEN THIS LINK Ziyuan Nie 1800 25.01.25
@@ -697,10 +704,11 @@ class EOSTabular(object):
 
     """
 
-    def __init__(self, name, filename=None, data=None):
+    def __init__(self, name, filename=None, data=None, baryon_mass=None):
 
         self.table = []
         self.uts = units.Units()
+        self.baryon_mass = self.uts.const('AMU_CGS') if baryon_mass is None else baryon_mass
 
         if name == 'from_file':
 
@@ -747,6 +755,7 @@ class EOSTabular(object):
         self.interp_logEnergyDensity_from_logPseudoEnthalpy = []
         self.interp_logPressure_from_logPseudoEnthalpy = []
         self.interp_logPseudoEnthalpy_from_logEnergyDensity = []
+        self.interp_logRestMassDensity_from_logPressure = None
 
         self.__interpolate()
         
@@ -784,6 +793,12 @@ class EOSTabular(object):
         self.interp_logPressure_from_logPseudoEnthalpy = CubicSpline(self.loghTab,self.logpTab)
         self.interp_logPseudoEnthalpy_from_logEnergyDensity = CubicSpline(self.logeTab,self.loghTab)
         self.interp_logPseudoEnthalpy_from_logPressure = CubicSpline(self.logpTab,self.loghTab)
+
+        if self.table.shape[1] >= 4:
+            rhoTab = self.table[:, 3] * self.baryon_mass * self.uts.cgs_to_geom('energy_density') * self.uts.const('C_CGS')**2
+            self.min_rhoTab = np.min(rhoTab)
+            self.max_rhoTab = np.max(rhoTab)
+            self.interp_logRestMassDensity_from_logPressure = CubicSpline(self.logpTab,np.log(rhoTab))
 
     def __remove_leading_zero(self, table):
         """
@@ -883,6 +898,24 @@ class EOSTabular(object):
             h = K * p ** (1/4)
         return h
 
+    def RestMassDensity_Of_Pressure(self,p):
+        """
+        Use non-relativistic degenerate gas, rho = K * p**(3./5.), below min p
+
+        Use ultra-relativistic degenerate gas, rho = K * p**(3./4.), above max p
+        """
+        if self.interp_logRestMassDensity_from_logPressure is None:
+            raise ValueError("EOS table has no baryon number density column")
+        if np.digitize(p,self.pBins) == 0:
+            K = self.min_rhoTab/self.min_pTab**(3/5)
+            rho = K * p ** (3/5)
+        elif np.digitize(p,self.pBins) == 1:
+            rho = exp(self.interp_logRestMassDensity_from_logPressure(log(p)))
+        else:
+            K = self.max_rhoTab/self.max_pTab**(3/4)
+            rho = K * p ** (3/4)
+        return rho
+
     """ h-functions """
     
     def EnergyDensity_Of_PseudoEnthalpy(self,h):
@@ -981,22 +1014,9 @@ class EOSTabular(object):
         dedp = self.EnergyDensityDeriv_Of_Pressure(p)
         return dedp
     
-    # ?
-    # def RestMassDensity_Of_PseudoEnthalpy(self,h):
-    #     """
-    #     Use non-relativistic degenerate gas, rho = K * h**(3./2.), below min h
-    #     """
-    #     h = np.atleast_1d(h)
-    #     rho = np.zeros(np.size(h))
-    #     ids_lr_min = np.nonzero(np.logical_and(h < self.min_hTab, h > 0.0))
-    #     ids_gt_min = np.nonzero(h >= self.min_hTab)
-    #     logh = np.log(h)
-    #     rho[ids_lr_min] = np.exp(self.logrhoTab[0] + 1.5 * (logh - self.loghTab[0]))
-    #     logrho = #self.interp_RestMassDensity_from_PseudoEnthalpy(logh)
-    #     rho[ids_gt_min] = np.log(logrho)
-    #     if rho.size == 1:
-    #        return rho[0]
-    #     return rho
+    def RestMassDensity_Of_PseudoEnthalpy(self,h):
+        p = self.Pressure_Of_PseudoEnthalpy(h)
+        return self.RestMassDensity_Of_Pressure(p)
 
     """ e-funcions """
 

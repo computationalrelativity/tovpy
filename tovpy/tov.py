@@ -20,6 +20,7 @@ import numpy as np
 from numpy import log, exp
 import scipy as sp
 from scipy.integrate import solve_ivp, odeint
+from scipy.interpolate import CubicSpline
 from scipy.special import factorial2, gamma, factorial2, hyp2f1, poch
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve, bisect
@@ -330,21 +331,28 @@ class TOV(object):
 
     def Compute_baryon_mass(self, sol):
         """
-        Compute baryon mass
+        Compute baryon mass from the rest-mass density
         """
         r = sol.y[self.var['r'],:]
         m = sol.y[self.var['m'],:]
-        # e = self.EOSEnergyDensityOfPseudoEnthalpyGeometerized(sol.t,self.eos)
-        e = np.array([self.eos.EnergyDensity_Of_PseudoEnthalpy(sol.t[i]) for i in range(len(sol.t))])
-        return np.trapz( 4*np.pi*r**2.*e/np.sqrt(1-2*m/r), r )
+        rho = np.array([self.eos.RestMassDensity_Of_PseudoEnthalpy(sol.t[i]) for i in range(len(sol.t))])
+        return self.__integrate_r(r, 4*np.pi*r**2.*rho/np.sqrt(1-2*m/r))
 
     def Compute_proper_radius(self, sol):
         """
-        Compute baryon mass
+        Compute proper radius
         """
         r = sol.y[self.var['r'],:]
         m = sol.y[self.var['m'],:]
-        return np.trapz( r, 1./np.sqrt((1-2*m/r)), r )
+        return self.__integrate_r(r, 1./np.sqrt(1-2*m/r))
+
+    def __integrate_r(self, r, f):
+        """
+        Integrate f(r) over the star with a cubic spline through the ODE nodes,
+        dropping the repeated nodes left when the solver stalls at the surface
+        """
+        keep = np.concatenate(([True], np.diff(r) > 0))
+        return CubicSpline(r[keep], f[keep]).integrate(r[0], r[keep][-1])
         
     def __compute_Love_odd(self,ell,c,y):
         """
